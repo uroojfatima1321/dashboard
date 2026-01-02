@@ -540,6 +540,37 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
         box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
     }
     
+    /* Date Type Checkboxes */
+    .date-type-group {
+        grid-column: span 1;
+    }
+    .date-type-checkboxes {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        padding: 0.5rem;
+        background: var(--bg-dark);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+    }
+    .date-type-checkboxes .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.8rem;
+        color: var(--text-primary);
+        cursor: pointer;
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: 500;
+    }
+    .date-type-checkboxes input[type="checkbox"] {
+        width: 14px;
+        height: 14px;
+        cursor: pointer;
+        accent-color: var(--primary);
+    }
+    
     /* Custom Dropdown Multi-Select */
     .dropdown-container {
         position: relative;
@@ -1891,16 +1922,12 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
                     <span class="dot"></span>
                     <span id="dataStatus">No data loaded</span>
                 </div>
-                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
-                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
-                    📁 Upload Excel
-                </button>
                 <button class="btn btn-secondary" onclick="refreshFromSheets()" title="Refresh data from Google Sheets">
                     🔄 Refresh Data
                 </button>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">
-                    <span class="theme-icon" id="themeIcon">🌙</span>
-                    <span class="theme-label" id="themeLabel">Dark</span>
+                    <span class="theme-icon" id="themeIcon">☀️</span>
+                    <span class="theme-label" id="themeLabel">Light</span>
                 </button>
                 <button class="btn-icon" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
             </div>
@@ -1990,14 +2017,14 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
                     </div>
                     <div class="filter-section-body">
                         <div class="filter-grid">
-                            <div class="filter-group">
-                                <label>Date Type</label>
-                                <select id="filterDateType">
-                                    <option value="created">Created</option>
-                                    <option value="updated">Updated</option>
-                                    <option value="resolved">Resolved</option>
-                                    <option value="none">None</option>
-                                </select>
+                            <div class="filter-group date-type-group">
+                                <label>Date Type (select one or more)</label>
+                                <div class="date-type-checkboxes">
+                                    <label class="checkbox-label"><input type="checkbox" name="dateType" value="created" checked> Created</label>
+                                    <label class="checkbox-label"><input type="checkbox" name="dateType" value="statusChanged"> Status Changed</label>
+                                    <label class="checkbox-label"><input type="checkbox" name="dateType" value="updated"> Updated</label>
+                                    <label class="checkbox-label"><input type="checkbox" name="dateType" value="resolved"> Resolved</label>
+                                </div>
                             </div>
                             <div class="filter-group">
                                 <label>From</label>
@@ -2040,9 +2067,6 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
             <div class="welcome-actions">
                 <button class="btn btn-primary" onclick="refreshFromSheets()">
                     🔄 Load Data from Google Sheets
-                </button>
-                <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">
-                    📁 Upload Excel File (Backup)
                 </button>
             </div>
             <div class="sample-preview">
@@ -2722,16 +2746,6 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
     // Hide the loading overlay initially
     document.getElementById('loadingOverlay').classList.add('hidden');
     
-    // Set up file input listener
-    // When user selects a file, this triggers the upload process
-    document.getElementById('fileInput').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            document.getElementById('loadingOverlay').classList.remove('hidden');
-            loadExcelFile(file);
-        }
-    });
-    
     // Check if Google Sheets is configured to load automatically
     if (GOOGLE_SHEET_CONFIG.enabled && GOOGLE_SHEET_CONFIG.url) {
         loadFromConfiguredSheets();
@@ -2825,6 +2839,7 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
             Created: row.Created ? new Date(row.Created) : null,
             Resolved: row.Resolved ? new Date(row.Resolved) : null,
             Updated: row.Updated ? new Date(row.Updated) : null,
+            'Status Category Changed': row['Status Category Changed'] ? new Date(row['Status Category Changed']) : null,
             
             // Convert time values to numbers (stored in seconds in Jira)
             // parseFloat converts string "3600" to number 3600
@@ -3395,7 +3410,11 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
         const teamFilter = getSelectedValues('filterTeam');
         const assigneeFilter = getSelectedValues('filterAssignee');
         const statusFilter = getSelectedValues('filterStatus');
-        const dateType = document.getElementById('filterDateType').value;
+        
+        // Get selected date types (multiple checkboxes)
+        const dateTypeCheckboxes = document.querySelectorAll('input[name="dateType"]:checked');
+        const selectedDateTypes = Array.from(dateTypeCheckboxes).map(cb => cb.value);
+        
         const dateFrom = document.getElementById('filterDateFrom').value ? 
             new Date(document.getElementById('filterDateFrom').value) : null;
         const dateTo = document.getElementById('filterDateTo').value ? 
@@ -3410,7 +3429,7 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
         if (teamFilter.length) activeCount++;
         if (assigneeFilter.length) activeCount++;
         if (statusFilter.length) activeCount++;
-        if ((dateFrom || dateTo) && dateType !== 'none') activeCount++;
+        if ((dateFrom || dateTo) && selectedDateTypes.length > 0) activeCount++;
         
         document.getElementById('activeFilterCount').textContent = `${activeCount} active`;
         
@@ -3445,21 +3464,32 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
             // Status filter
             if (statusFilter.length && !matchesFilter(row.Status, statusFilter)) return false;
             
-            // Date filter (uses selected date type)
-            if ((dateFrom || dateTo) && dateType !== 'none') {
-                let dateField;
-                switch (dateType) {
-                    case 'created': dateField = row.Created; break;
-                    case 'updated': dateField = row.Updated; break;
-                    case 'resolved': dateField = row.Resolved; break;
-                    default: dateField = row.Created;
+            // Date filter (uses OR logic across selected date types)
+            if ((dateFrom || dateTo) && selectedDateTypes.length > 0) {
+                let matchesAnyDateType = false;
+                
+                for (const dateType of selectedDateTypes) {
+                    let dateField;
+                    switch (dateType) {
+                        case 'created': dateField = row.Created; break;
+                        case 'updated': dateField = row.Updated; break;
+                        case 'resolved': dateField = row.Resolved; break;
+                        case 'statusChanged': dateField = row['Status Category Changed']; break;
+                        default: dateField = row.Created;
+                    }
+                    
+                    if (dateField) {
+                        let matchesThisType = true;
+                        if (dateFrom && dateField < dateFrom) matchesThisType = false;
+                        if (dateTo && dateField > dateTo) matchesThisType = false;
+                        if (matchesThisType) {
+                            matchesAnyDateType = true;
+                            break; // OR logic - one match is enough
+                        }
+                    }
                 }
-                if (dateField) {
-                    if (dateFrom && dateField < dateFrom) return false;
-                    if (dateTo && dateField > dateTo) return false;
-                } else {
-                    return false;  // No date = filtered out when date filter is on
-                }
+                
+                if (!matchesAnyDateType) return false;
             }
             
             return true;  // Row passes all filters
@@ -3524,13 +3554,20 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
             }
         });
         
-        // Check date filter
-        const dateType = document.getElementById('filterDateType').value;
+        // Check date filter (multiple date types)
+        const dateTypeCheckboxes = document.querySelectorAll('input[name="dateType"]:checked');
+        const selectedDateTypes = Array.from(dateTypeCheckboxes).map(cb => cb.value);
         const dateFrom = document.getElementById('filterDateFrom').value;
         const dateTo = document.getElementById('filterDateTo').value;
         
-        if ((dateFrom || dateTo) && dateType !== 'none') {
-            let dateLabel = dateType.charAt(0).toUpperCase() + dateType.slice(1);
+        if ((dateFrom || dateTo) && selectedDateTypes.length > 0) {
+            const dateTypeLabels = {
+                'created': 'Created',
+                'statusChanged': 'Status Changed',
+                'updated': 'Updated',
+                'resolved': 'Resolved'
+            };
+            const dateTypesLabel = selectedDateTypes.map(dt => dateTypeLabels[dt] || dt).join('/');
             let dateValue = '';
             let shortDateValue = '';
             if (dateFrom && dateTo) {
@@ -3545,7 +3582,7 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
             }
             activeFilters.push({
                 filterId: 'filterDate',
-                label: `Date`,
+                label: `Date (${dateTypesLabel})`,
                 value: dateValue,
                 shortValue: shortDateValue,
                 count: 1
@@ -3593,8 +3630,10 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
     */
     function clearFilter(filterId) {
         if (filterId === 'filterDate') {
-            // Clear date filters
-            document.getElementById('filterDateType').value = 'created';
+            // Clear date filters - reset to only Created checked
+            document.querySelectorAll('input[name="dateType"]').forEach(cb => {
+                cb.checked = cb.value === 'created';
+            });
             document.getElementById('filterDateFrom').value = '';
             document.getElementById('filterDateTo').value = '';
         } else {
@@ -3649,8 +3688,10 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
             input.value = '';
         });
         
-        // Reset date type to Created
-        document.getElementById('filterDateType').value = 'created';
+        // Reset date type checkboxes - only Created checked
+        document.querySelectorAll('input[name="dateType"]').forEach(cb => {
+            cb.checked = cb.value === 'created';
+        });
         
         // Reset dates to full range
         if (rawData.length) {
@@ -3834,12 +3875,15 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
         
         // 4. BUG RATIO: (Internal Bugs / Story Points Done) * 100 = %
         // Story Points from completed items (Done, Released, Staging Done)
-        const completed = data.filter(row => 
+        // Exclude QA Task only (keep Sub-tasks for Story Points)
+        const spTasks = data.filter(row => row['Issue Type'] !== 'QA Task');
+        
+        const spCompleted = spTasks.filter(row => 
             ['Done', 'Released', 'Staging Done', 'Stagging Done'].some(status => 
                 (row.Status || '').toLowerCase().includes(status.toLowerCase())
             )
         );
-        const storyPointsDone = completed.reduce((sum, row) => sum + (row['Story Points'] || 0), 0);
+        const storyPointsDone = spCompleted.reduce((sum, row) => sum + (row['Story Points'] || 0), 0);
         
         // Bug Ratio = (Internal Bugs / Story Points Done) * 100
         const bugRatio = storyPointsDone > 0 ? ((internalBugs.length / storyPointsDone) * 100) : 0;
@@ -3849,8 +3893,8 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
         document.getElementById('kpiProductionBugs').textContent = productionBugs.length.toLocaleString();
         
         // 6. STORY POINTS CARD
-        // Total Story Points (all tasks)
-        const totalSP = mainTasks.reduce((sum, row) => sum + (row['Story Points'] || 0), 0);
+        // Total Story Points (all items except QA Task)
+        const totalSP = spTasks.reduce((sum, row) => sum + (row['Story Points'] || 0), 0);
         document.getElementById('kpiSPDone').textContent = storyPointsDone.toLocaleString();
         document.getElementById('kpiTotalSP').textContent = totalSP.toLocaleString();
         
@@ -4736,10 +4780,14 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
     Collapsible table showing team members per product/component.
     Now includes task summaries, time estimated and time spent for each member.
     Group headers show total time spent for the product.
+    Excludes QA Task issue type.
     */
     function updateGraph10() {
         // Deduplicate by Key first
         let data = getUniqueByKey(filteredData);
+        
+        // Exclude QA Task
+        data = data.filter(row => row['Issue Type'] !== 'QA Task');
         
         const jiraBaseUrl = 'https://contegris.atlassian.net/browse/';
         const productTeams = {};
@@ -4889,10 +4937,14 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
     ----------------------------------------------
     Shows distribution of issues by Required By field.
     Unspecified items are merged into Internal.
+    Excludes QA Task and Sub-task.
     */
     function updateGraph12() {
         // Deduplicate by Key first
         let data = getUniqueByKey(filteredData);
+        
+        // Exclude QA Task and Sub-task
+        data = data.filter(row => !['QA Task', 'Sub-task'].includes(row['Issue Type']));
         
         const byRequired = {};
         data.forEach(row => {
@@ -5788,6 +5840,7 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
     toggleTheme()
     -------------
     PURPOSE: Switches between dark and light mode
+    Button shows what mode you'll switch TO (not current mode)
     */
     function toggleTheme() {
         const body = document.body;
@@ -5798,9 +5851,11 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
         
         const isLightMode = body.classList.contains('light-mode');
         
-        // Update button appearance
-        themeIcon.textContent = isLightMode ? '☀️' : '🌙';
-        themeLabel.textContent = isLightMode ? 'Light' : 'Dark';
+        // Update button appearance - show what you'll switch TO
+        // In light mode: show "🌙 Dark" (click to switch to dark)
+        // In dark mode: show "☀️ Light" (click to switch to light)
+        themeIcon.textContent = isLightMode ? '🌙' : '☀️';
+        themeLabel.textContent = isLightMode ? 'Dark' : 'Light';
         
         // Save preference to localStorage
         localStorage.setItem('dashboard-theme', isLightMode ? 'light' : 'dark');
@@ -5821,6 +5876,11 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
         
         if (savedTheme === 'light') {
             document.body.classList.add('light-mode');
+            // In light mode: show "🌙 Dark" (click to switch to dark)
+            themeIcon.textContent = '🌙';
+            themeLabel.textContent = 'Dark';
+        } else {
+            // In dark mode: show "☀️ Light" (click to switch to light)
             themeIcon.textContent = '☀️';
             themeLabel.textContent = 'Light';
         }
@@ -6098,12 +6158,16 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
     -------------------
     PURPOSE: Manually refreshes data from the configured Google Sheets API
     Called when user clicks "Refresh Data" button
+    Preserves current filter selections during refresh.
     */
     function refreshFromSheets() {
         if (!GOOGLE_SHEET_CONFIG.url) {
             alert('Google Sheets URL is not configured.');
             return;
         }
+        
+        // Save current filter selections before refresh
+        const savedFilters = saveCurrentFilters();
         
         document.getElementById('loadingOverlay').classList.remove('hidden');
         
@@ -6117,7 +6181,7 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
             .then(data => {
                 // Google Sheets API returns { values: [[headers], [row1], [row2], ...] }
                 rawData = parseGoogleSheetsApiResponse(data);
-                onDataLoaded('Google Sheets');
+                onDataLoadedWithFilters('Google Sheets', savedFilters);
                 
                 // Show brief success notification
                 showNotification('✅ Data refreshed successfully!', 'success');
@@ -6127,6 +6191,112 @@ Bug/Task Ratio: (Total Bugs / Completed Tasks) * 100
                 document.getElementById('loadingOverlay').classList.add('hidden');
                 showNotification('❌ Failed to refresh: ' + error.message, 'error');
             });
+    }
+    
+    /*
+    saveCurrentFilters()
+    --------------------
+    PURPOSE: Saves current filter selections to restore after refresh
+    */
+    function saveCurrentFilters() {
+        const filterIds = ['filterSprint', 'filterRelease', 'filterComponent', 'filterIssueType', 'filterTeam', 'filterAssignee', 'filterStatus'];
+        const saved = {};
+        
+        // Save dropdown selections
+        filterIds.forEach(filterId => {
+            if (dropdownState[filterId]) {
+                saved[filterId] = Array.from(dropdownState[filterId].selected);
+            }
+        });
+        
+        // Save date filters
+        saved.dateTypes = Array.from(document.querySelectorAll('input[name="dateType"]:checked')).map(cb => cb.value);
+        saved.dateFrom = document.getElementById('filterDateFrom').value;
+        saved.dateTo = document.getElementById('filterDateTo').value;
+        
+        return saved;
+    }
+    
+    /*
+    restoreFilters(savedFilters)
+    ----------------------------
+    PURPOSE: Restores saved filter selections after refresh
+    */
+    function restoreFilters(savedFilters) {
+        if (!savedFilters) return;
+        
+        const filterIds = ['filterSprint', 'filterRelease', 'filterComponent', 'filterIssueType', 'filterTeam', 'filterAssignee', 'filterStatus'];
+        
+        // Restore dropdown selections
+        filterIds.forEach(filterId => {
+            if (savedFilters[filterId] && savedFilters[filterId].length > 0) {
+                const list = document.getElementById(filterId + '_list');
+                if (list && dropdownState[filterId]) {
+                    // Clear and restore selections
+                    dropdownState[filterId].selected = new Set(savedFilters[filterId]);
+                    
+                    // Check the appropriate checkboxes
+                    list.querySelectorAll('.dropdown-item').forEach(item => {
+                        const cb = item.querySelector('input[type="checkbox"]');
+                        if (cb) {
+                            const label = item.querySelector('.dropdown-item-label');
+                            const value = label ? label.textContent.trim() : '';
+                            cb.checked = savedFilters[filterId].includes(value);
+                        }
+                    });
+                    
+                    updateDropdownDisplay(filterId);
+                }
+            }
+        });
+        
+        // Restore date type checkboxes
+        if (savedFilters.dateTypes) {
+            document.querySelectorAll('input[name="dateType"]').forEach(cb => {
+                cb.checked = savedFilters.dateTypes.includes(cb.value);
+            });
+        }
+        
+        // Restore date range
+        if (savedFilters.dateFrom) {
+            document.getElementById('filterDateFrom').value = savedFilters.dateFrom;
+        }
+        if (savedFilters.dateTo) {
+            document.getElementById('filterDateTo').value = savedFilters.dateTo;
+        }
+    }
+    
+    /*
+    onDataLoadedWithFilters(sourceName, savedFilters)
+    -------------------------------------------------
+    PURPOSE: Like onDataLoaded but restores saved filters
+    */
+    function onDataLoadedWithFilters(sourceName, savedFilters) {
+        // Update status badge with row count and timestamp
+        const badge = document.getElementById('dataBadge');
+        badge.classList.add('connected');
+        const now = new Date().toLocaleTimeString();
+        document.getElementById('dataStatus').textContent = `${rawData.length} rows • Updated ${now}`;
+        badge.title = `Data from: ${sourceName}\nLast updated: ${now}`;
+        
+        // Populate all filter dropdowns
+        populateFilters();
+        
+        // Restore saved filter selections
+        restoreFilters(savedFilters);
+        
+        // Hide welcome, show dashboard
+        document.getElementById('welcomeState').classList.add('hidden');
+        document.getElementById('dashboardContent').style.display = 'block';
+        
+        // Apply filters (this also updates all charts)
+        applyFilters();
+        
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').classList.add('hidden');
+        
+        // Save source name for refresh
+        window.lastDataSource = sourceName;
     }
     
     /*
